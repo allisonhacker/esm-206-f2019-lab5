@@ -6,6 +6,170 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+### Lab 5 objectives
+- Learn to parse dates with "lubridate"
+- Get counts of observations with count()
+- Uncount() rows
+- One and two sample t-test
+- Create a heatmap with geom_tile()
+
+```{r, include=FALSE}
+
+#read in packages and attach data
+library(tidyverse)
+library(here)
+library(janitor)
+
+lobster_abundance <- read_csv(here("data", "lobster_abundance.csv"), na = "-99999") %>% 
+  clean_names() 
+  
+```
+
+Use tidyr::uncount() function to convert our lobster data from frequency format to case format
+
+```{r}
+lobster_tidy <- lobster_abundance %>% 
+  uncount(lobster_count)
+```
+
+### Exploratory data visualization
+
+We're only going to consider site as our variable of interest
+
+```{r}
+
+ggplot(lobster_tidy, aes(x = site, y = size_mm))+
+  geom_jitter(aes(color = site), alpha = 0.5, width = 0.2)
+
+ggplot(lobster_tidy, aes(x = size_mm))+
+  geom_histogram(aes(fill = site))+
+  facet_wrap(~site) # can also use scales = "free" as an argument to facet wrap which will make the scales different between graphs
+
+ggplot(lobster_tidy, aes(sample = size_mm))+
+  geom_qq()+
+  facet_wrap(~site)
+
+```
+
+### Convert the date column to class "Date"
+
+We'll use lubridate package to convert to Date format, and then to help us easily parse month and year
+
+```{r}
+lobster_date <- lobster_tidy %>% 
+  mutate(date_new = lubridate::mdy(date))
+```
+
+Now let's parse year and month using lubridate::month() and lubridate::year()
+
+```{r}
+
+lobster_parse_date <- lobster_date %>% 
+  mutate(
+    obs_month = lubridate::month(date_new, label = TRUE),
+    obs_year = lubridate::year(date_new)
+  )
+```
+
+Now let's find counts of observed lobsters based on different hierarchical groupings:
+
+First, let's count lobsters by year and month.
+```{r}
+
+lobster_ym <- lobster_parse_date %>% 
+  dplyr::count(obs_year, obs_month)
+
+lobster_y<- lobster_parse_date %>% 
+  dplyr::count(obs_year)
+
+lobster_site <- lobster_parse_date %>% 
+  count(site, obs_year)
+
+```
+
+If we want to create a summary table that contains multiple statistics other than count by group, it's easier to use group_by() and n()
+
+```{r}
+
+lobster_summary <- lobster_parse_date %>% 
+  group_by(site) %>%
+  summarize( 
+            mean_size = mean(size_mm, na.rm = TRUE),
+            sd_size = sd(size_mm, na.rm = TRUE),
+            lobster_number = n()
+            )
+
+```
+
+### Find confidence intervals
+
+Use t.test() function to find confidence intervals for one sample and t-test to compare means of two samples
+
+```{r}
+ivee_lobster <- lobster_tidy %>%
+  filter(site == "IVEE") %>% 
+  pull(size_mm) #creates a vector from the dataframe
+
+#Find confidence interval
+
+t.test(ivee_lobster)
+
+```
+
+### Two-sample t-test to compare means
+
+We are basically asking if two samples are drawn from populations with the same mean
+
+We want to ask: Is there a significant difference in lobster lengths at Naples and Mohawk reefs.
+
+* We have already done our necessary exploratory analyses to determine that a two-sample t-test for means comparison is appropriate.
+
+```{r}
+
+napl_sample <- lobster_tidy %>% 
+  filter(site == "NAPL") %>% 
+  pull(size_mm)
+
+mohk_sample <- lobster_tidy %>% 
+  filter(site == "MOHK") %>% 
+  pull(size_mm)
+
+mn_ttest <- t.test(mohk_sample, napl_sample)
+
+mn_ttest
+
+```
+There is a significant difference in lobster lengths between Naples and Mohawk Reef (t(df) = statistic, p <0.001 , alpha = 0.5). 
+
+^ This should be the least interesting part of your data analysis.
+
+An easier way to do this:
+```{r}
+lobster_mn <- lobster_tidy %>% 
+  filter(site %in% c("MOHK", "NAPL"))
+
+mn_ttest2 <- t.test(data = lobster_mn, size_mm ~ site)
+mn_ttest2
+
+mn_ttest2$p.value
+mn_ttest2$statistic
+```
+
+We can use inline variable referencing in R markdown to call a variable in text. This is better for reproducibility because it will update if data is changed.
+
+Here is the p-value: `r mn_ttest2$p.value`
+
+Here is the t-statistic: `r mn_ttest2$statistic`
+
+### Heatmap!
+
+```{r}
+
+ggplot(data = lobster_site, aes(x = obs_year, y = site))+
+  geom_tile(aes(fill = n))
 ```
 
